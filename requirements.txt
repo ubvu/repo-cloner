@@ -2,3 +2,6 @@ ruff
 psutil
 gputil
 pre-commit
+python-dotenv
+GitPython
+pandas

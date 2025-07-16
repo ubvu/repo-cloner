@@ -159,6 +159,9 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Sensitive output (specific to this project)
+existing_repos.csv
+
 # Template specific ignores
 # *************** FOR DEVELOPMENT ONLY ****************
 Development_spec.json

@@ -7,6 +7,8 @@ individual account and other host with little to no work.
 """
 
 import os
+import random
+import time
 
 import pandas as pd
 import requests
@@ -36,14 +38,29 @@ headers = {
 
 
 # Get list of repositories in original group
-def get_github_repos():
-    url = f"{GITHUB_API_URL}/users/{GITHUB_OWNER}/repos"
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        return response.json()
-    else:
-        print(f"Failed to get GitHub repos: {response.status_code}")
-        return []
+def get_github_repos(org, headers):
+    page = 1
+    repos = []
+    while True:
+        url = f"{GITHUB_API_URL}/orgs/{org}/repos?per_page=100&page={page}"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            repos += data
+            if (
+                "link" in response.headers
+                and "next" in response.headers["link"]
+            ):
+                page += 1
+                time.sleep(
+                    6 / random.randint(2, 6)
+                )  # Delay to avoid hitting rate limits
+            else:
+                break
+        else:
+            print(f"Failed to get GitHub repos: {response.status_code}")
+            break
+    return repos
 
 
 # Get repository details from original host
@@ -106,23 +123,31 @@ def mirror_to_gitlab(github_repos):
 
 if __name__ == "__main__":
     # Gather all the repo names from your github group/account
-    github_repos = get_github_repos()
+    github_repos = get_github_repos(GITHUB_OWNER, headers)
+    github_repos = pd.DataFrame.from_records(github_repos)
+    print(len(github_repos))
     # These are compared to the previous scrape to avoid copies
-    existing_gitlab_repos = pd.read_csv("existing_repos.csv")
-    existing_gitlab_repos = existing_gitlab_repos["repo_name"].to_list()
-    new_repos = list(set(github_repos) - set(existing_gitlab_repos))
-    if new_repos:
-        for repo in new_repos:
-            repo_details = get_github_repo_details(repo["name"])
-            if repo_details:
-                mirror_to_gitlab([repo_details])
-            else:
-                print(f"Could not get details for {repo['name']}")
-        # Add new repos to existing repos file
-        existing_gitlab_repos += new_repos
+    try:
+        existing_gitlab_repos = pd.read_csv("existing_repos.csv")
+    except pd.errors.EmptyDataError:
         existing_gitlab_repos = pd.DataFrame(
-            existing_gitlab_repos, columns=["repo_name"]
+            columns=list(github_repos.columns)
         )
+    new_repos = github_repos[
+        ~github_repos["id"].isin(existing_gitlab_repos["id"])
+    ]
+    # new_repos = list(set(github_repos) - set(existing_gitlab_repos))
+    if len(new_repos) > 0:
+        for _index, repo in new_repos.iterrows():
+            repo_details = get_github_repo_details(repo["name"])
+            print(repo_details)
+            # if repo_details:
+            #     mirror_to_gitlab([repo_details])
+            # else:
+            #     print(f"Could not get details for {repo['name']}")
+            # TODO: Test that upload works, create dummy private proj
+        # Add new repos to existing repos file
+        existing_gitlab_repos = pd.concat([new_repos, existing_gitlab_repos])
         existing_gitlab_repos.to_csv("existing_repos.csv")
     else:
         print("No repositories found in GitHub group")

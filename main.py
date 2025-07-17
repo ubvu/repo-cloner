@@ -94,9 +94,7 @@ def mirror_to_gitlab(github_repos):
     for repo in github_repos:
         repo_name = repo["name"]
         repo_url = repo["html_url"]
-        repo_description = (
-            repo["description"] if repo["description"] else "No description"
-        )
+        repo_description = repo["description"] if repo["description"] else ""
         repo_visibility = repo["private"]  # True for private, False for public
 
         # Create a new project in the GitLab environment
@@ -136,15 +134,12 @@ if __name__ == "__main__":
     new_repos = github_repos[
         ~github_repos["id"].isin(existing_gitlab_repos["id"])
     ]
-    # new_repos = list(set(github_repos) - set(existing_gitlab_repos))
+
     if len(new_repos) > 0:
         for _index, repo in new_repos.iterrows():
-            repo_details = get_github_repo_details(repo["name"])
-            print(repo_details)
-            # if repo_details:
-            #     mirror_to_gitlab([repo_details])
-            # else:
-            #     print(f"Could not get details for {repo['name']}")
+            # repo_details = get_github_repo_details(repo["name"])
+            # print(repo_details)
+            mirror_to_gitlab([repo])
             # TODO: Test that upload works, create dummy private proj
         # Add new repos to existing repos file
         existing_gitlab_repos = pd.concat([new_repos, existing_gitlab_repos])

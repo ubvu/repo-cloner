@@ -12,7 +12,7 @@ import time
 
 import pandas as pd
 import requests
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 
 load_dotenv()
 
@@ -26,7 +26,7 @@ GITLAB_TOKEN = os.getenv("GITLAB-TOKEN")
 GITLAB_OWNER = os.getenv("GITLAB-USER")
 GITLAB_API_URL = os.getenv("GITLAB-API-URL")
 GITLAB_GROUP_NAME = os.getenv("GITLAB-GROUP")
-
+GITLAB_GROUP_ID = "GITLAB_GROUP_ID"
 
 # **** DO NOT EDIT HERE ****
 
@@ -75,18 +75,32 @@ def get_github_repo_details(repo_name):
 
 
 def get_gitlab_group_id(group_name):
-    url = f"{GITLAB_API_URL}/api/v4/groups"
-    response = requests.get(url, headers=headers)
-    if response.status_code == 200:
-        groups = response.json()
-        for group in groups:
-            if group["path"] == group_name:
-                return group["id"]
-        print(f"Group {group_name} not found in GitLab")
-        return None
-    else:
-        print(f"Failed to get GitLab groups: {response.status_code}")
-        return None
+    page = 1
+    while True:
+        url = f"{GITLAB_API_URL}/api/v4/groups?per_page=100&page={page}"
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            groups = response.json()
+            print(groups)
+            for group in groups:
+                if group["name"] == group_name:
+                    set_key(".env", group["id"], os.environ["GITLAB-GROUP-ID"])
+                    return group["id"]
+            if (
+                "link" in response.headers
+                and "next" in response.headers["link"]
+            ):
+                page += 1
+                time.sleep(
+                    6 / random.randint(2, 6)
+                )  # Delay to avoid hitting rate limits
+            else:
+                break
+        else:
+            print(f"Failed to get GitLab groups: {response.status_code}")
+            return None
+    print(f"Group {group_name} not found in GitLab")
+    return None
 
 
 # Mirror each original repo to its new home
@@ -127,18 +141,22 @@ if __name__ == "__main__":
     # These are compared to the previous scrape to avoid copies
     try:
         existing_gitlab_repos = pd.read_csv("existing_repos.csv")
-    except pd.errors.EmptyDataError:
+    except (pd.errors.EmptyDataError, FileNotFoundError):
         existing_gitlab_repos = pd.DataFrame(
             columns=list(github_repos.columns)
         )
     new_repos = github_repos[
         ~github_repos["id"].isin(existing_gitlab_repos["id"])
     ]
-
+    # print(new_repos)
     if len(new_repos) > 0:
+        # Cut out private repos and test on limited group
+        new_repos = new_repos[
+            (~new_repos["private"]) & (new_repos["name"] == "repo-cloner")
+        ]
         for _index, repo in new_repos.iterrows():
             # repo_details = get_github_repo_details(repo["name"])
-            # print(repo_details)
+            # print("*" * 30, repo)
             mirror_to_gitlab([repo])
             # TODO: Test that upload works, create dummy private proj
         # Add new repos to existing repos file

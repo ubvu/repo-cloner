@@ -31,8 +31,12 @@ GITLAB_GROUP_ID = "GITLAB_GROUP_ID"
 # **** DO NOT EDIT HERE ****
 
 # Headers for API requests
-headers = {
+headers_gh = {
     "Authorization": f"token {GITHUB_TOKEN}",
+    "Content-Type": "application/json",
+}
+headers_gl = {
+    "PRIVATE-TOKEN": f"{GITLAB_TOKEN}",
     "Content-Type": "application/json",
 }
 
@@ -64,7 +68,7 @@ def get_github_repos(org, headers):
 
 
 # Get repository details from original host
-def get_github_repo_details(repo_name):
+def get_github_repo_details(repo_name, headers):
     url = f"{GITHUB_API_URL}/repos/{GITHUB_OWNER}/{repo_name}"
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
@@ -74,14 +78,14 @@ def get_github_repo_details(repo_name):
         return None
 
 
-def get_gitlab_group_id(group_name):
+def get_gitlab_group_id(group_name, headers):
     page = 1
     while True:
         url = f"{GITLAB_API_URL}/api/v4/groups?per_page=100&page={page}"
         response = requests.get(url, headers=headers)
         if response.status_code == 200:
             groups = response.json()
-            print(groups)
+            # print(groups)
             for group in groups:
                 if group["name"] == group_name:
                     set_key(".env", group["id"], os.environ["GITLAB-GROUP-ID"])
@@ -104,7 +108,7 @@ def get_gitlab_group_id(group_name):
 
 
 # Mirror each original repo to its new home
-def mirror_to_gitlab(github_repos):
+def mirror_to_gitlab(github_repos, headers):
     for repo in github_repos:
         repo_name = repo["name"]
         repo_url = repo["html_url"]
@@ -116,12 +120,10 @@ def mirror_to_gitlab(github_repos):
         gitlab_project_data = {
             "name": repo_name,
             "description": repo_description,
-            "visibility_level": 0
-            if repo_visibility
-            else 10,  # 0 for private, 10 for public
-            "namespace_id": get_gitlab_group_id(GITLAB_GROUP_NAME),
+            "visibility_level": "private" if repo_visibility else "public",
+            "namespace_id": get_gitlab_group_id(GITLAB_GROUP_NAME, headers),
             "mirror": True,
-            "mirror_url": repo_url,
+            "import_url": repo_url + ".git",
         }
 
         response = requests.post(
@@ -131,11 +133,12 @@ def mirror_to_gitlab(github_repos):
             print(f"Successfully mirrored {repo_name} to GitLab")
         else:
             print(f"Failed to mirror {repo_name}: {response.status_code}")
+            print(response)
 
 
 if __name__ == "__main__":
     # Gather all the repo names from your github group/account
-    github_repos = get_github_repos(GITHUB_OWNER, headers)
+    github_repos = get_github_repos(GITHUB_OWNER, headers_gh)
     github_repos = pd.DataFrame.from_records(github_repos)
     print(len(github_repos))
     # These are compared to the previous scrape to avoid copies
@@ -152,12 +155,12 @@ if __name__ == "__main__":
     if len(new_repos) > 0:
         # Cut out private repos and test on limited group
         new_repos = new_repos[
-            (~new_repos["private"]) & (new_repos["name"] == "repo-cloner")
+            (new_repos["private"]) & (new_repos["name"] == "private_test")
         ]
         for _index, repo in new_repos.iterrows():
             # repo_details = get_github_repo_details(repo["name"])
             # print("*" * 30, repo)
-            mirror_to_gitlab([repo])
+            mirror_to_gitlab([repo], headers_gl)
             # TODO: Test that upload works, create dummy private proj
         # Add new repos to existing repos file
         existing_gitlab_repos = pd.concat([new_repos, existing_gitlab_repos])

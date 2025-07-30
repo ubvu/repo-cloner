@@ -88,7 +88,7 @@ def get_gitlab_group_id(group_name, headers):
             # print(groups)
             for group in groups:
                 if group["name"] == group_name:
-                    set_key(".env", group["id"], os.environ["GITLAB-GROUP-ID"])
+                    set_key(".env", os.environ["GITLAB-GROUP-ID"], group["id"])
                     return group["id"]
             if (
                 "link" in response.headers
